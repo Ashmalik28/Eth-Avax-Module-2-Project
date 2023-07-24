@@ -1,60 +1,81 @@
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.9;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
 
-//import "hardhat/console.sol";
+contract FitnessTracker {
+    address public owner;
 
-contract Assessment {
-    address payable public owner;
-    uint256 public balance;
-
-    event Deposit(uint256 amount);
-    event Withdraw(uint256 amount);
-
-    constructor(uint initBalance) payable {
-        owner = payable(msg.sender);
-        balance = initBalance;
+    struct FitnessRecord {
+        uint256 day;
+        uint256 distance;
+        uint256 timestamp;
     }
 
-    function getBalance() public view returns(uint256){
-        return balance;
+    mapping(address => FitnessRecord[]) private runningDistances;
+
+    event FitnessRecorded(address indexed user, uint256 day, uint256 distance, uint256 timestamp);
+    event FitnessRecordUpdated(address indexed user, uint256 index, uint256 newDistance);
+    event BMICalculated(address indexed user, uint256 bmi, string status);
+
+    constructor() {
+        owner = msg.sender;
     }
 
-    function deposit(uint256 _amount) public payable {
-        uint _previousBalance = balance;
-
-        // make sure this is the owner
-        require(msg.sender == owner, "You are not the owner of this account");
-
-        // perform transaction
-        balance += _amount;
-
-        // assert transaction completed successfully
-        assert(balance == _previousBalance + _amount);
-
-        // emit the event
-        emit Deposit(_amount);
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not the contract owner");
+        _;
     }
 
-    // custom error
-    error InsufficientBalance(uint256 balance, uint256 withdrawAmount);
+    function recordFitness(uint256 distance) public {
+        uint256 day = runningDistances[msg.sender].length + 1; // Increment day number by 1 for each new record
+        uint256 timestamp = block.timestamp; // Get the current block timestamp
+        FitnessRecord memory record = FitnessRecord(day, distance, timestamp);
+        runningDistances[msg.sender].push(record);
+        emit FitnessRecorded(msg.sender, day, distance, timestamp);
+    }
 
-    function withdraw(uint256 _withdrawAmount) public {
-        require(msg.sender == owner, "You are not the owner of this account");
-        uint _previousBalance = balance;
-        if (balance < _withdrawAmount) {
-            revert InsufficientBalance({
-                balance: balance,
-                withdrawAmount: _withdrawAmount
-            });
+    function getFitnessHistory() public view returns (FitnessRecord[] memory) {
+        return runningDistances[msg.sender];
+    }
+
+    function getFitnessRecord(uint256 index) public view returns (FitnessRecord memory) {
+        require(index < runningDistances[msg.sender].length, "Invalid index");
+        return runningDistances[msg.sender][index];
+    }
+
+    function getFitnessHistoryLength() public view returns (uint256) {
+        return runningDistances[msg.sender].length;
+    }
+
+    function calculateBMI(uint256 weight, uint256 height) public {
+        require(weight > 0 && height > 0, "Weight and height must be greater than zero");
+        uint256 bmi = (weight * 10000 * 10) / (height * height); // BMI formula: weight(kg) / height(m)^2
+
+        string memory status;
+
+        if (bmi < 185) {
+            status = "Underweight";
+        } else if (bmi >= 185 && bmi < 249) {
+            status = "Normal weight";
+        } else if (bmi >= 250 && bmi < 299) {
+            status = "Overweight";
+        } else {
+            status = "Obese";
         }
 
-        // withdraw the given amount
-        balance -= _withdrawAmount;
+        emit BMICalculated(msg.sender, bmi, status);
+    }
 
-        // assert the balance is correct
-        assert(balance == (_previousBalance - _withdrawAmount));
+    function getTotalDistance() public view returns (uint256) {
+        uint256 totalDistance = 0;
+        FitnessRecord[] memory records = runningDistances[msg.sender];
+        for (uint256 i = 0; i < records.length; i++) {
+            totalDistance += records[i].distance;
+        }
+        return totalDistance;
+    }
 
-        // emit the event
-        emit Withdraw(_withdrawAmount);
+    function clearFitnessHistory() public {
+        delete runningDistances[msg.sender];
     }
 }
+
